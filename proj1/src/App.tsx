@@ -12,6 +12,15 @@ import ConnectButton from './components/ConnectButton';
 
 import { Web3Provider } from '@ethersproject/providers';
 import { getChainData } from './helpers/utilities';
+import {
+  US_ELECTION_ADDRESS
+} from './constants';
+import { getContract } from './helpers/ethers';
+// const USElection = require('./constants/abis/USElection.json');
+import * as data from './constants/abis/USElection.json';
+import { logMsg } from './helpers/dev';
+import ResultsSubmitForm from './components/ResultsSubmitForm'
+import TransactionDetails from './components/TransactionDetails'
 
 const SLayout = styled.div`
   position: relative;
@@ -58,6 +67,10 @@ interface IAppState {
   result: any | null;
   electionContract: any | null;
   info: any | null;
+  currentLeader: any | null;
+  errorFlag: any | null;
+  errorMessage: any | null;
+  transactionHash: any | null
 }
 
 const INITIAL_STATE: IAppState = {
@@ -69,7 +82,11 @@ const INITIAL_STATE: IAppState = {
   pendingRequest: false,
   result: null,
   electionContract: null,
-  info: null
+  info: null,
+  currentLeader: null,
+  errorFlag: null,
+  errorMessage: null,
+  transactionHash: null
 };
 
 class App extends React.Component<any, any> {
@@ -106,16 +123,86 @@ class App extends React.Component<any, any> {
 
     const address = this.provider.selectedAddress ? this.provider.selectedAddress : this.provider?.accounts[0];
 
+    const electionContract = getContract(US_ELECTION_ADDRESS, data.abi, library, address);
+
     await this.setState({
       library,
       chainId: network.chainId,
       address,
-      connected: true
+      connected: true.valueOf,
+      electionContract
     });
 
     await this.subscribeToProviderEvents(this.provider);
 
   };
+
+  public currentLeader = async () => {
+    const { electionContract } = this.state;
+
+    const currentLeader = await electionContract.currentLeader();
+
+    await this.setState({ currentLeader });
+  };
+
+  public submitElectionResult = async (formValues: any) => {
+    const { electionContract } = this.state;
+
+    // const dataArr = [
+    //   'Idahssd22334s2s1sdwe23',
+    //   votesForBiden,
+    //   50,
+    //   24
+	  // ];
+		
+		await this.setState({ fetching: true });
+
+    try {
+      const transaction = await electionContract.submitStateResult(formValues);
+
+      this.setState({ transactionHash: transaction.hash });
+      
+      const transactionReceipt = await transaction.wait();
+      if (transactionReceipt.status !== 1) {
+        // React to failure
+        logMsg('nekaf fail') 
+
+      }
+      logMsg('vsi4ko to4no')
+      this.setState({ fetching: false });
+
+  } catch (e) {
+      // logMsg(e)
+      if(e.error) {
+
+        this.setErrorMessage(e.error.message)
+      }
+      this.setState({ fetching: false });
+
+      // this.setState({
+      //   errorFlag: true,
+      //   errorMessage: e
+      // })
+  } finally {
+      this.setState({ fetching: false });
+
+  }
+
+
+
+
+};
+
+public setErrorMessage = (message: any) => {
+  if(message) {
+
+    this.setState({errorMessage: message, errorFlag: true})
+  }
+}
+
+public clearErorr = () => {
+  this.setState({errorFlag: false, errorMessage: null})
+}
 
   public subscribeToProviderEvents = async (provider:any) => {
     if (!provider.on) {
@@ -185,6 +272,7 @@ class App extends React.Component<any, any> {
 
   };
 
+
   public render = () => {
     const {
       address,
@@ -206,11 +294,22 @@ class App extends React.Component<any, any> {
               <Column center>
                 <SContainer>
                   <Loader />
+                  <TransactionDetails transactionHash={this.state.transactionHash}/>
                 </SContainer>
               </Column>
             ) : (
                 <SLanding center>
                   {!this.state.connected && <ConnectButton onClick={this.onConnect} />}
+                  {
+                    this.state.connected && 
+                    <div>
+                      <ResultsSubmitForm submitElectionResult={this.submitElectionResult}/>
+                      {this.state.errorFlag && <div onClick={this.clearErorr}>{this.state.errorMessage}</div>} 
+
+                  </div>
+                  }
+
+
                 </SLanding>
               )}
           </SContent>
